@@ -1,0 +1,50 @@
+{
+  "RecipeFormatVersion": "2020-01-25",
+  "ComponentName": "aws.greengrass.labs.kvs.stream.uploader",
+  "ComponentVersion": "1.0.0",
+  "ComponentType": "aws.greengrass.generic",
+  "ComponentDescription": "Upload RTSP stream to KVS",
+  "ComponentPublisher": "Amazon",
+  "ComponentConfiguration": {
+    "DefaultConfiguration": {
+      "KVS_STREAM_REGION": "USER_SETTING"
+    }
+  },
+  "ComponentDependencies": {
+    "aws.greengrass.TokenExchangeService": {
+      "VersionRequirement": ">=2.0.0 <3.0.0",
+      "DependencyType": "HARD"
+    }
+  },
+  "Manifests": [
+    {
+      "Platform": {
+        "os": "linux"
+      },
+      "Name": "Linux",
+      "Lifecycle": {
+        "Run": "java -cp {artifacts:path}/StreamUploader.jar com.aws.iot.iotlab.streamuploader.StreamUploaderMain",
+        "Setenv": {
+          "KVS_STREAM_REGION": "{configuration:/KVS_STREAM_REGION}"
+        }
+      },
+      "Artifacts": [
+        {
+          "Uri": "s3://greengrass-kvs-bucket/artifacts/com.aws.iot.iotlab.streamuploader/1.0.0/StreamUploader.jar",
+          "Permission": {
+            "Read": "OWNER",
+            "Execute": "OWNER"
+          }
+        },
+        {
+          "Uri": "s3://greengrass-kvs-bucket/artifacts/com.aws.iot.iotlab.streamuploader/1.0.0/streamuploaderconfig.json",
+          "Permission": {
+            "Read": "OWNER",
+            "Execute": "OWNER"
+          }
+        }
+      ]
+    }
+  ],
+  "Lifecycle": {}
+}

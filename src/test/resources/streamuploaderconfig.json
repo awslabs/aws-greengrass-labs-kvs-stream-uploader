@@ -1,0 +1,12 @@
+{
+    "configList": [
+        {
+            "RtspUrl": "rtsp://test-1.com",
+            "KvsStreamName": "test-greengrass-kvs-stream-1"
+        },
+        {
+            "RtspUrl": "rtsp://test-2.com",
+            "KvsStreamName": "test-greengrass-kvs-stream-2"
+        }
+    ]
+}
