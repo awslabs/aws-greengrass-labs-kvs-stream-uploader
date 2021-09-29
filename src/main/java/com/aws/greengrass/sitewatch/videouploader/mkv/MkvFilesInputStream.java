@@ -131,8 +131,9 @@ public class MkvFilesInputStream extends InputStream {
                 mkvStartTime = mkvTimestamp;
             }
 
+            FileInputStream fileInputStream = null;
             try {
-                FileInputStream fileInputStream = new FileInputStream(mkvFile);
+                fileInputStream = new FileInputStream(mkvFile);
                 final StreamingMkvReader streamingMkvReader =
                         StreamingMkvReader.createDefault(
                                 new InputStreamParserByteSource(fileInputStream));
@@ -145,7 +146,6 @@ public class MkvFilesInputStream extends InputStream {
                 } else {
                     log.debug("No data was merged from file " +  mkvFile.getAbsolutePath());
                     closeMkvInputStream();
-                    fileInputStream.close();
                 }
             } catch (FileNotFoundException exception) {
                 log.error("File not found " + mkvFile.getAbsolutePath());
@@ -156,8 +156,14 @@ public class MkvFilesInputStream extends InputStream {
                 mkvIterator.previous();
                 closeMkvInputStream();
                 break;
-            } catch (IOException e) {
-                log.error("Unable to close fileInputStream");
+            } finally {
+                try {
+                    if (fileInputStream != null) {
+                        fileInputStream.close();
+                    }
+                } catch (IOException exception) {
+                    log.error("Failed to close fileInputStream");
+                }
             }
         }
 
