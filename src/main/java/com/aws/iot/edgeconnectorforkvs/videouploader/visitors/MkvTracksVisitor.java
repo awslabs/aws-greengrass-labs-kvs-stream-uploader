@@ -13,6 +13,7 @@ import com.aws.iot.edgeconnectorforkvs.videouploader.model.exceptions.MkvTracksE
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -161,8 +162,17 @@ public class MkvTracksVisitor extends MkvElementVisitor {
      * Convert tracks to MKV raw data format.
      *
      * @return MKV raw data of tracks
+     * @throws IOException if no available tracks
      */
-    public byte[] toMkvRawData() {
-        return previousTracks.toMkvRawData();
+    public byte[] toMkvRawData() throws IOException {
+        if (isTracksAvailable()) {
+            return previousTracks.toMkvRawData();
+        } else {
+            throw new IOException("No available tracks");
+        }
+    }
+
+    public boolean isTracksAvailable() {
+        return previousTracks != null;
     }
 }

@@ -15,6 +15,9 @@
 
 package com.aws.iot.edgeconnectorforkvs.videouploader;
 
+import com.aws.iot.edgeconnectorforkvs.videouploader.callback.UploadCallBack;
+import com.aws.iot.edgeconnectorforkvs.videouploader.model.exceptions.KvsStreamingException;
+import com.aws.iot.edgeconnectorforkvs.videouploader.model.exceptions.VideoUploaderException;
 import lombok.NonNull;
 
 import java.io.Closeable;
@@ -33,10 +36,11 @@ public interface VideoUploader extends Closeable {
      * @param videoUploadingEndTime   Video upload end time
      * @param statusChangedCallBack   A callback for updating status
      * @param uploadCallBack          A callback for task completes or fails
-     * @throws IllegalArgumentException The value for this input parameter is invalid
+     * @throws KvsStreamingException Throws an exception at the end if there was any failure
      */
     void uploadHistoricalVideo(@NonNull Date videoUploadingStartTime, @NonNull Date videoUploadingEndTime,
-                               Runnable statusChangedCallBack, Runnable uploadCallBack);
+                               Runnable statusChangedCallBack, UploadCallBack uploadCallBack)
+            throws IllegalArgumentException, VideoUploaderException, KvsStreamingException;
 
 
     /**
@@ -46,9 +50,10 @@ public interface VideoUploader extends Closeable {
      * @param videoUploadingStartTime The start time of the given input stream
      * @param statusChangedCallBack   A callback for updating status
      * @param uploadCallBack          A callback for task completes or fails
+     * @throws KvsStreamingException Throws an exception at the end if there was any failure
      */
     void uploadStream(@NonNull InputStream inputStream, Date videoUploadingStartTime, Runnable statusChangedCallBack,
-                      Runnable uploadCallBack);
+                      UploadCallBack uploadCallBack) throws KvsStreamingException;
 
     /**
      * Closes current task and releases all resources.

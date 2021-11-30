@@ -16,6 +16,7 @@
 package com.aws.iot.iotlab.streamuploader;
 
 import com.aws.iot.edgeconnectorforkvs.videouploader.VideoUploader;
+import com.aws.iot.edgeconnectorforkvs.videouploader.callback.UploadCallBack;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.InputStream;
@@ -37,8 +38,11 @@ public class RunnableUploader implements Runnable {
 
     @Override
     public void run() {
-        final Runnable uploadCallBack = () -> {
-            log.info("uploadCallback set status to true");
+        final UploadCallBack uploadCallBack = new UploadCallBack(new Date(), null) {
+            @Override
+            public void run() {
+                log.info("uploadCallback set status to true");
+            }
         };
 
         videoUploader.uploadStream(inputStream, Date.from(Instant.now()), null, uploadCallBack);

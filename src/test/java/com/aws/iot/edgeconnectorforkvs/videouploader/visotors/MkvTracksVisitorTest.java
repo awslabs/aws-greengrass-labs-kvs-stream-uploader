@@ -8,9 +8,11 @@ import com.amazonaws.kinesisvideo.parser.mkv.MkvStartMasterElement;
 import com.aws.iot.edgeconnectorforkvs.videouploader.model.exceptions.MkvTracksException;
 import com.aws.iot.edgeconnectorforkvs.videouploader.visitors.MkvTracksVisitor;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -86,7 +88,7 @@ public class MkvTracksVisitorTest {
     private MkvDataElement crc32DataElement;
     private MkvDataElement voidDataElement;
 
-    MkvTracksVisitor visitor;
+    private MkvTracksVisitor visitor;
 
     @BeforeEach
     public void setupForEach() {
@@ -193,6 +195,21 @@ public class MkvTracksVisitorTest {
         visitor = new MkvTracksVisitor();
     }
 
+    private boolean setPrivateMember(MkvTracksVisitor instance, String fieldName, Object value) {
+        boolean result = false;
+        try {
+            Field field = MkvTracksVisitor.class.getDeclaredField(fieldName);
+            field.setAccessible(true);
+            field.set(instance, value);
+            result = true;
+        } catch (NoSuchFieldException exception) {
+            System.out.println("Failed to mock " + fieldName + ", NoSuchFieldException");
+        } catch (IllegalAccessException exception) {
+            System.out.println("Failed to mock " + fieldName + ", IllegalAccessException");
+        }
+        return result;
+    }
+
     @Test
     public void visit_validInputs_validStates() {
         Assertions.assertEquals(MkvTracksVisitor.State.NEW, visitor.getState());
@@ -217,29 +234,21 @@ public class MkvTracksVisitorTest {
     }
 
     @Test
-    public void visit_invalidStateInStartMasterElement_throwException()
-            throws NoSuchFieldException, IllegalAccessException {
-        Field state = MkvTracksVisitor.class.getDeclaredField("state");
-        state.setAccessible(true);
-        state.set(visitor, MkvTracksVisitor.State.INVALID);
+    public void visit_invalidStateInStartMasterElement_throwException() {
+        Assumptions.assumeTrue(setPrivateMember(visitor, "state", MkvTracksVisitor.State.INVALID));
         Assertions.assertThrows(MkvTracksException.class, () -> visitor.visit(tracksStartMasterElement));
     }
 
     @Test
-    public void visit_invalidStateInDataElement_throwException()
-            throws NoSuchFieldException, IllegalAccessException {
-        Field state = MkvTracksVisitor.class.getDeclaredField("state");
-        state.setAccessible(true);
-        state.set(visitor, MkvTracksVisitor.State.INVALID);
+    public void visit_invalidStateInDataElement_throwException() {
+        Assumptions.assumeTrue(setPrivateMember(visitor, "state", MkvTracksVisitor.State.INVALID));
         Assertions.assertThrows(MkvTracksException.class, () -> visitor.visit(trackNumberDataElement));
     }
 
     @Test
     public void visit_invalidStateInEndMasterElement_throwException()
             throws NoSuchFieldException, IllegalAccessException {
-        Field state = MkvTracksVisitor.class.getDeclaredField("state");
-        state.setAccessible(true);
-        state.set(visitor, MkvTracksVisitor.State.INVALID);
+        Assumptions.assumeTrue(setPrivateMember(visitor, "state", MkvTracksVisitor.State.INVALID));
         Assertions.assertThrows(MkvTracksException.class, () -> visitor.visit(tracksEndMasterElement));
     }
 
@@ -358,5 +367,10 @@ public class MkvTracksVisitorTest {
         Assertions.assertEquals(MkvTracksVisitor.State.NEW, visitor.getState());
 
         Assertions.assertFalse(visitor.isTracksEquivalent());
+    }
+
+    @Test
+    public void toMkvRawData_nullPreviousTracks_throwExcpetion() {
+        Assertions.assertThrows(IOException.class, () -> visitor.toMkvRawData());
     }
 }

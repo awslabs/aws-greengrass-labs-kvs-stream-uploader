@@ -18,7 +18,7 @@ package com.aws.iot.edgeconnectorforkvs.videouploader.mkv;
 import com.amazonaws.kinesisvideo.parser.ebml.InputStreamParserByteSource;
 import com.amazonaws.kinesisvideo.parser.mkv.MkvElementVisitException;
 import com.amazonaws.kinesisvideo.parser.mkv.StreamingMkvReader;
-import com.aws.iot.edgeconnectorforkvs.videouploader.VideoRecordVisitor;
+import com.aws.iot.edgeconnectorforkvs.videouploader.model.VideoFile;
 import com.aws.iot.edgeconnectorforkvs.videouploader.model.exceptions.MergeFragmentException;
 import com.aws.iot.edgeconnectorforkvs.videouploader.visitors.MergeFragmentVisitor;
 import lombok.NonNull;
@@ -26,7 +26,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -40,7 +39,7 @@ import java.util.ListIterator;
 @Slf4j
 public class MkvFilesInputStream extends InputStream {
 
-    private final ListIterator<File> mkvIterator;
+    private final ListIterator<VideoFile> mkvIterator;
 
     private final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
 
@@ -57,7 +56,7 @@ public class MkvFilesInputStream extends InputStream {
      *
      * @param mkvIterator A file iterator that contains all MKV files
      */
-    public MkvFilesInputStream(@NonNull ListIterator<File> mkvIterator) {
+    public MkvFilesInputStream(@NonNull ListIterator<VideoFile> mkvIterator) {
         this.mkvIterator = mkvIterator;
     }
 
@@ -125,44 +124,38 @@ public class MkvFilesInputStream extends InputStream {
                 break;
             }
 
-            final File mkvFile = mkvIterator.next();
-            final Date mkvTimestamp = VideoRecordVisitor.getDateFromFilename(mkvFile.getName());
+            final VideoFile mkvFile = mkvIterator.next();
+            final Date mkvTimestamp = mkvFile.getVideoDate();
             if (mkvStartTime == null) {
                 mkvStartTime = mkvTimestamp;
             }
 
-            FileInputStream fileInputStream = null;
-            try {
-                fileInputStream = new FileInputStream(mkvFile);
+            try (FileInputStream fileInputStream = new FileInputStream(mkvFile)) {
                 final StreamingMkvReader streamingMkvReader =
                         StreamingMkvReader.createDefault(
                                 new InputStreamParserByteSource(fileInputStream));
 
                 mergeFragmentVisitor.setNextFragmentTimecodeOffsetMs(mkvTimestamp.getTime() - mkvStartTime.getTime());
                 streamingMkvReader.apply(mergeFragmentVisitor);
+                mkvFile.setParsed(true);
 
                 if (byteArrayOutputStream.size() > 0) {
                     byteArrayInputStream = new ByteArrayInputStream(byteArrayOutputStream.toByteArray());
                 } else {
-                    log.debug("No data was merged from file " +  mkvFile.getAbsolutePath());
+                    log.info("File: {} doesn't contain any video data, skip merging.", mkvFile.getAbsolutePath());
                     closeMkvInputStream();
                 }
             } catch (FileNotFoundException exception) {
                 log.error("File not found " + mkvFile.getAbsolutePath());
+            } catch (IOException exception) {
+                log.error("Failed to close file: " + mkvFile.getAbsolutePath());
             } catch (MkvElementVisitException exception) {
                 log.error("Unable to parse " + mkvFile.getAbsolutePath());
             } catch (MergeFragmentException exception) {
                 log.error("Failed to merge file: " + mkvFile.getAbsolutePath());
                 mkvIterator.previous();
+                closeMkvInputStream();
                 break;
-            } finally {
-                try {
-                    if (fileInputStream != null) {
-                        fileInputStream.close();
-                    }
-                } catch (IOException exception) {
-                    log.error("Failed to close fileInputStream");
-                }
             }
         }
 

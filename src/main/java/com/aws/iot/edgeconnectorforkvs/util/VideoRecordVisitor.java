@@ -13,17 +13,18 @@
  * permissions and limitations under the License.
  */
 
-package com.aws.iot.edgeconnectorforkvs.videouploader;
+package com.aws.iot.edgeconnectorforkvs.util;
 
+import com.aws.iot.edgeconnectorforkvs.videouploader.model.VideoFile;
 import lombok.Builder;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.FileNotFoundException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -42,7 +43,8 @@ import java.util.regex.Pattern;
 @Slf4j
 public class VideoRecordVisitor extends SimpleFileVisitor<Path> {
     /* A pre-defined filename that specifies data in the precision of milliseconds. */
-    private static final String VIDEO_FILENAME_FORMAT = "video_\\d+\\.mkv";
+    private static final String VIDEO_FILENAME_FORMAT = Constants.VIDEO_FILENAME_PREFIX + "\\d+\\"
+            + Constants.VIDEO_FILENAME_POSTFIX;
 
     /* A pattern for paring date in the filename */
     private static final String VIDEO_FILENAME_DATE_PATTERN = "(\\d+)";
@@ -53,7 +55,7 @@ public class VideoRecordVisitor extends SimpleFileVisitor<Path> {
 
     private Date videoUploadingEndTime;
 
-    private final List<File> videoFiles = new ArrayList<>();
+    private final List<VideoFile> videoFiles = new ArrayList<>();
 
     /**
      * The factory create of VideoRecordVisitor.
@@ -75,7 +77,7 @@ public class VideoRecordVisitor extends SimpleFileVisitor<Path> {
             if (filename != null) {
                 final Date videoTime = getDateFromFilename(filename.toString());
                 if (videoUploadingStartTime.before(videoTime) && videoTime.before(videoUploadingEndTime)) {
-                    videoFiles.add(file.toFile());
+                    videoFiles.add(new VideoFile(file.toFile()));
                 }
             }
         }
@@ -90,8 +92,8 @@ public class VideoRecordVisitor extends SimpleFileVisitor<Path> {
      * @param videoUploadingEndTime   Video upload end time
      * @return An list iterator
      */
-    public List<File> listFilesToUpload(@NonNull Date videoUploadingStartTime,
-                                        @NonNull Date videoUploadingEndTime) {
+    public List<VideoFile> listFilesToUpload(@NonNull Date videoUploadingStartTime,
+                                             @NonNull Date videoUploadingEndTime) {
         this.videoFiles.clear();
         this.videoUploadingStartTime = new Date(videoUploadingStartTime.getTime());
         this.videoUploadingEndTime = new Date(videoUploadingEndTime.getTime());
@@ -108,7 +110,7 @@ public class VideoRecordVisitor extends SimpleFileVisitor<Path> {
             return date1.compareTo(date2);
         });
 
-        return new ArrayList<File>(videoFiles);
+        return new ArrayList<VideoFile>(videoFiles);
     }
 
     /**
@@ -121,8 +123,27 @@ public class VideoRecordVisitor extends SimpleFileVisitor<Path> {
         if (filename.matches(VIDEO_FILENAME_FORMAT)) {
             final Pattern pattern = Pattern.compile(VIDEO_FILENAME_DATE_PATTERN);
             final Matcher matcher = pattern.matcher(filename);
-            matcher.find();
-            return new Date(Long.parseLong(matcher.group()));
+            try {
+                matcher.find();
+                long timestamp = Long.parseLong(matcher.group());
+                return new Date(timestamp);
+            } catch (NumberFormatException e) {
+                return new Date(0L);
+            }
+        }
+        return new Date(0L);
+    }
+
+    /**
+     * Return {@link Date} from pre-defined filename format.
+     *
+     * @param filePath filename to parse.
+     * @return {@link Date} parsed from filename, or zero otherwise.
+     */
+    public static Date getDateFromFilePath(@NonNull Path filePath) {
+        Path fileNamePath = filePath.getFileName();
+        if (fileNamePath != null && fileNamePath.toString() != null) {
+            return getDateFromFilename(fileNamePath.toString());
         }
         return new Date(0L);
     }
@@ -141,5 +162,28 @@ public class VideoRecordVisitor extends SimpleFileVisitor<Path> {
         }
 
         return null;
+    }
+
+    private static String generateUploadedFilename(Date date) {
+        return Constants.VIDEO_FILENAME_PREFIX + date.getTime() + Constants.VIDEO_FILENAME_UPLOADED_POSTFIX;
+    }
+
+    /**
+     * Mark a video as an uploaded one by renaming it.
+     *
+     * @param videoFile The video file to be marked.
+     */
+    public static void markVideoAsUploaded(VideoFile videoFile) {
+        String uploadedFilename = generateUploadedFilename(videoFile.getVideoDate());
+
+        try {
+            Path basePath = Paths.get(videoFile.getAbsolutePath()).getParent();
+            if (basePath != null) {
+                Path uploadedPath = Paths.get(basePath.toString(), uploadedFilename);
+                Files.move(videoFile.toPath(), uploadedPath);
+            }
+        } catch (IOException exception) {
+            log.warn(exception.getMessage());
+        }
     }
 }

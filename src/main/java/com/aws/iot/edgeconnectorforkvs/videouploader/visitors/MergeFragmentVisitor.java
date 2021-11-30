@@ -175,16 +175,19 @@ public final class MergeFragmentVisitor extends CompositeMkvElementVisitor imple
                     if (!MkvTypeInfos.EBML.equals(ebmlTypeInfo)) {
                         throw new IllegalArgumentException("Un-expected non-EBML element in new MKV stream");
                     }
-                    log.info("state: NEW -> BUFFERING_SEGMENT");
+                    log.trace("state: NEW -> BUFFERING_SEGMENT");
                     state = MergeState.BUFFERING_SEGMENT;
                     bufferAndCollectSegment(startMasterElement);
                     break;
                 case BUFFERING_SEGMENT:
-                    if (MkvTypeInfos.CLUSTER.equals(ebmlTypeInfo) || MkvTypeInfos.TAGS.equals(ebmlTypeInfo)) {
-                        // When we meet a start element of cluster or tag, it means it's the end of meaningful
-                        // segment element.
+                    if (MkvTypeInfos.CLUSTER.equals(ebmlTypeInfo)) {
                         if (!isSegmentEmitted) {
-                            emitBufferedSegmentData();
+                            if (tracksVisitor.isTracksAvailable()) {
+                                emitBufferedSegmentData();
+                            } else {
+                                throw new MergeFragmentException("No track info available");
+                            }
+                            isSegmentVerified = true;
                         } else if (!isSegmentVerified) {
                             if (tracksVisitor.isTracksEquivalent()) {
                                 log.info("Tracks of new incoming MKV data are the same");
@@ -195,15 +198,13 @@ public final class MergeFragmentVisitor extends CompositeMkvElementVisitor imple
                         }
                         isSegmentVerified = true;
 
-                        if (MkvTypeInfos.CLUSTER.equals(ebmlTypeInfo)) {
-                            log.info("state: BUFFERING_SEGMENT -> BUFFERING_CLUSTER");
-                            state = MergeState.BUFFERING_CLUSTER;
-                            bufferAndCollectCluster(startMasterElement);
-                        } else {
-                            log.info("state: BUFFERING_SEGMENT -> BUFFERING_TAG");
-                            state = MergeState.BUFFERING_TAG;
-                            log.debug("Ignore Tag header: " + ebmlTypeInfo.getName());
-                        }
+                        log.trace("state: BUFFERING_SEGMENT -> BUFFERING_CLUSTER");
+                        state = MergeState.BUFFERING_CLUSTER;
+                        bufferAndCollectCluster(startMasterElement);
+                    } else if (MkvTypeInfos.TAGS.equals(ebmlTypeInfo)) {
+                        log.trace("state: BUFFERING_SEGMENT -> BUFFERING_TAG");
+                        state = MergeState.BUFFERING_TAG;
+                        log.debug("Ignore Tag header: " + ebmlTypeInfo.getName());
                     } else {
                         if (MkvTypeInfos.TRACKS.equals(ebmlTypeInfo)) {
                             isIgnoreTracksElements = true;
@@ -232,7 +233,7 @@ public final class MergeFragmentVisitor extends CompositeMkvElementVisitor imple
                             + endMasterElement);
                 case BUFFERING_SEGMENT:
                     if (MkvTypeInfos.SEGMENT.equals(ebmlTypeInfo)) {
-                        log.info("state: BUFFERING_SEGMENT -> NEW");
+                        log.trace("state: BUFFERING_SEGMENT -> NEW");
                         state = MergeState.NEW;
                         nextFragmentTimecodeOffsetMs = -1;
                         bufferingSegmentStream.reset();
@@ -249,17 +250,17 @@ public final class MergeFragmentVisitor extends CompositeMkvElementVisitor imple
                         previousCluster = currentCluster;
                         currentCluster = null;
                         if (isPausable) {
-                            log.info("state: BUFFERING_CLUSTER -> PAUSE");
+                            log.trace("state: BUFFERING_CLUSTER -> PAUSE");
                             state = MergeState.PAUSE;
                         } else {
-                            log.info("state: BUFFERING_CLUSTER -> BUFFERING_SEGMENT");
+                            log.trace("state: BUFFERING_CLUSTER -> BUFFERING_SEGMENT");
                             state = MergeState.BUFFERING_SEGMENT;
                         }
                     }
                     break;
                 case BUFFERING_TAG:
                     if (MkvTypeInfos.TAGS.equals(ebmlTypeInfo)) {
-                        log.info("state: BUFFERING_TAG -> BUFFERING_SEGMENT");
+                        log.trace("state: BUFFERING_TAG -> BUFFERING_SEGMENT");
                         state = MergeState.BUFFERING_SEGMENT;
                     }
                     break;
@@ -298,7 +299,7 @@ public final class MergeFragmentVisitor extends CompositeMkvElementVisitor imple
     @Override
     public boolean isDone() {
         if (state == MergeState.PAUSE) {
-            log.info("state: PAUSE -> BUFFERING_SEGMENT");
+            log.trace("state: PAUSE -> BUFFERING_SEGMENT");
             state = MergeState.BUFFERING_SEGMENT;
             return true;
         } else {
@@ -357,8 +358,9 @@ public final class MergeFragmentVisitor extends CompositeMkvElementVisitor imple
                 }
             }
         } else {
-            throw new MkvElementVisitException("There should be no elements to buffer after segment is verified",
-                    new RuntimeException());
+            /* After segment is verified, all other level 1 elements should be ignored because we can't put them in
+            the middle of cluster stream. */
+            log.debug("Ignore " + ebmlTypeInfo.getName());
         }
     }
 
@@ -381,8 +383,9 @@ public final class MergeFragmentVisitor extends CompositeMkvElementVisitor imple
                 dataElement.writeToChannel(bufferingSegmentChannel);
             }
         } else {
-            throw new MkvElementVisitException("There should be no elements to buffer after segment is verified",
-                    new RuntimeException());
+            /* After segment is verified, all other level 1 elements should be ignored because we can't put them in
+            the middle of cluster stream. */
+            log.debug("Ignore " + ebmlTypeInfo.getName());
         }
     }
 
@@ -432,7 +435,7 @@ public final class MergeFragmentVisitor extends CompositeMkvElementVisitor imple
             }
 
             final long clusterTimecodeUpdatedMs = clusterTimecodeMs + nextFragmentTimecodeOffsetMs / timescaleMs;
-            log.info("Update cluster timecode from " + clusterTimecodeMs + " to " + clusterTimecodeUpdatedMs);
+            log.trace("Update cluster timecode from " + clusterTimecodeMs + " to " + clusterTimecodeUpdatedMs);
             currentCluster.setAbsoluteTimecode(clusterTimecodeUpdatedMs);
         } else if (MkvTypeInfos.SIMPLEBLOCK.equals(ebmlTypeInfo)) {
             final MkvValue<Frame> frame = dataElement.getValueCopy();
@@ -472,9 +475,9 @@ public final class MergeFragmentVisitor extends CompositeMkvElementVisitor imple
                 }
             }
             if (isMissingFrameForTrack) {
-                log.info("Skip cluster for missing frame for track: " + cluster);
+                log.trace("Skip cluster for missing frame for track: " + cluster);
             } else {
-                log.info("Wrote cluster to channel: " + cluster);
+                log.trace("Wrote cluster to channel: " + cluster);
                 cluster.sort();
                 try {
                     cluster.writeToChannel(outputChannel);

@@ -21,9 +21,13 @@ import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.regions.Region;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.kinesisvideo.*;
+import com.amazonaws.services.kinesisvideo.model.AckEvent;
+import com.amazonaws.services.kinesisvideo.model.AckEventType;
 import com.amazonaws.services.kinesisvideo.model.GetDataEndpointRequest;
 import com.amazonaws.services.kinesisvideo.model.GetDataEndpointResult;
 import com.amazonaws.services.kinesisvideo.model.PutMediaRequest;
+import com.aws.iot.edgeconnectorforkvs.util.Constants;
+import com.aws.iot.edgeconnectorforkvs.videouploader.callback.UploadCallBack;
 import com.aws.iot.edgeconnectorforkvs.videouploader.mkv.MkvInputStream;
 import com.aws.iot.edgeconnectorforkvs.videouploader.model.exceptions.VideoUploaderException;
 import lombok.extern.slf4j.Slf4j;
@@ -51,7 +55,7 @@ import java.util.Date;
 public class VideoUploaderClientTest {
 
     private static final Long TEST_TIME = 1600000000000L;
-    private static final Long STATUS_CHANGED_TIME = 80L;
+    private static final Long STATUS_CHANGED_TIME = Constants.UPLOADER_WAIT_FOR_ACKS_DELAY_MILLI_SECONDS + 80L;
     private static final String RECORD_FILE_PATH = "testRecordFilePath";
     private static final String KVS_STREAM_NAME = "testKvsStreamName";
     private static final String DATA_ENDPOINT = "testDataEndpoint";
@@ -237,7 +241,12 @@ public class VideoUploaderClientTest {
         final Runnable statusChangedCallBack = () -> isStatusChanged[0] = true;
 
         final boolean[] isUploaded = {false};
-        final Runnable uploadCallBack = () -> isUploaded[0] = true;
+        final UploadCallBack uploadCallBack = new UploadCallBack(new Date(), null) {
+            @Override
+            public void run() {
+                isUploaded[0] = true;
+            }
+        };
 
         when(mockKvsFrontendClient.getDataEndpoint(any(GetDataEndpointRequest.class))).thenReturn(new GetDataEndpointResult().withDataEndpoint(DATA_ENDPOINT));
         doNothing().when(mockKvsDataClient).putMedia(any(PutMediaRequest.class), any(PutMediaAckResponseHandler.class));
@@ -275,7 +284,12 @@ public class VideoUploaderClientTest {
         final Runnable statusChangedCallBack = () -> isStatusChanged[0] = true;
 
         final boolean[] isUploaded = {false};
-        final Runnable uploadCallBack = () -> isUploaded[0] = true;
+        final UploadCallBack uploadCallBack = new UploadCallBack(new Date(), null) {
+            @Override
+            public void run() {
+                isUploaded[0] = true;
+            }
+        };
 
         ArgumentCaptor<PutMediaAckResponseHandler> putMediaAckResponseArgumentCaptor =
                 ArgumentCaptor.forClass(PutMediaAckResponseHandler.class);
@@ -287,8 +301,12 @@ public class VideoUploaderClientTest {
 
         // Since we make putMedia do nothing, so it won't end until we close it.
         new Thread(() -> {
-            videoUploaderClient.uploadStream(inputStream, Date.from(Instant.now()), statusChangedCallBack,
-                    uploadCallBack);
+            try {
+                videoUploaderClient.uploadStream(inputStream, Date.from(Instant.now()), statusChangedCallBack,
+                        uploadCallBack);
+            } catch (Exception exception) {
+                // nop
+            }
         }).start();
 
         // wait until task start
@@ -299,8 +317,11 @@ public class VideoUploaderClientTest {
 
         verify(mockKvsDataClient).putMedia(putMediaRequestArgumentCaptor.capture(), putMediaAckResponseArgumentCaptor.capture());
 
-        putMediaAckResponseArgumentCaptor.getValue().onAckEvent(null);
-        putMediaAckResponseArgumentCaptor.getValue().onFailure(null);
+        AckEvent ackEvent = new AckEvent();
+        ackEvent.setAckEventType(AckEventType.of(AckEventType.Values.BUFFERING));
+
+        putMediaAckResponseArgumentCaptor.getValue().onAckEvent(ackEvent);
+        putMediaAckResponseArgumentCaptor.getValue().onFailure(new Throwable("UT"));
 
         // wait until task end
         while (videoUploaderClient.isOpen()) {
@@ -321,7 +342,12 @@ public class VideoUploaderClientTest {
         final Runnable statusChangedCallBack = () -> isStatusChanged[0] = true;
 
         final boolean[] isUploaded = {false};
-        final Runnable uploadCallBack = () -> isUploaded[0] = true;
+        final UploadCallBack uploadCallBack = new UploadCallBack(new Date(), null) {
+            @Override
+            public void run() {
+                isUploaded[0] = true;
+            }
+        };
 
         ArgumentCaptor<PutMediaAckResponseHandler> putMediaAckResponseArgumentCaptor =
                 ArgumentCaptor.forClass(PutMediaAckResponseHandler.class);
@@ -345,7 +371,10 @@ public class VideoUploaderClientTest {
 
         verify(mockKvsDataClient).putMedia(putMediaRequestArgumentCaptor.capture(), putMediaAckResponseArgumentCaptor.capture());
 
-        putMediaAckResponseArgumentCaptor.getValue().onAckEvent(null);
+        AckEvent ackEvent = new AckEvent();
+        ackEvent.setAckEventType(AckEventType.of(AckEventType.Values.BUFFERING));
+
+        putMediaAckResponseArgumentCaptor.getValue().onAckEvent(ackEvent);
         putMediaAckResponseArgumentCaptor.getValue().onComplete();
 
         // wait until task end
@@ -385,7 +414,10 @@ public class VideoUploaderClientTest {
 
         verify(mockKvsDataClient).putMedia(putMediaRequestArgumentCaptor.capture(), putMediaAckResponseArgumentCaptor.capture());
 
-        putMediaAckResponseArgumentCaptor.getValue().onAckEvent(null);
+        AckEvent ackEvent = new AckEvent();
+        ackEvent.setAckEventType(AckEventType.of(AckEventType.Values.BUFFERING));
+
+        putMediaAckResponseArgumentCaptor.getValue().onAckEvent(ackEvent);
         putMediaAckResponseArgumentCaptor.getValue().onComplete();
 
         // wait until task end
@@ -459,7 +491,12 @@ public class VideoUploaderClientTest {
         final Runnable statusChangedCallBack = () -> isStatusChanged[0] = true;
 
         final boolean[] isUploaded = {false};
-        final Runnable uploadCallBack = () -> isUploaded[0] = true;
+        final UploadCallBack uploadCallBack = new UploadCallBack(new Date(), null) {
+            @Override
+            public void run() {
+                isUploaded[0] = true;
+            }
+        };
 
         when(mockKvsFrontendClient.getDataEndpoint(any(GetDataEndpointRequest.class))).thenReturn(new GetDataEndpointResult().withDataEndpoint(DATA_ENDPOINT));
         doNothing().when(mockKvsDataClient).putMedia(any(PutMediaRequest.class), any(PutMediaAckResponseHandler.class));
@@ -501,7 +538,12 @@ public class VideoUploaderClientTest {
         final Runnable statusChangedCallBack = () -> isStatusChanged[0] = true;
 
         final boolean[] isUploaded = {false};
-        final Runnable uploadCallBack = () -> isUploaded[0] = true;
+        final UploadCallBack uploadCallBack = new UploadCallBack(new Date(), null) {
+            @Override
+            public void run() {
+                isUploaded[0] = true;
+            }
+        };
 
         Field field = VideoUploaderClient.class.getDeclaredField("dataEndpoint");
         field.setAccessible(true);
@@ -544,7 +586,12 @@ public class VideoUploaderClientTest {
         final Runnable statusChangedCallBack = () -> isStatusChanged[0] = true;
 
         final boolean[] isUploaded = {false};
-        final Runnable uploadCallBack = () -> isUploaded[0] = true;
+        final UploadCallBack uploadCallBack = new UploadCallBack(new Date(), null) {
+            @Override
+            public void run() {
+                isUploaded[0] = true;
+            }
+        };
 
         Field field = VideoUploaderClient.class.getDeclaredField("isTaskTerminating");
         field.setAccessible(true);
