@@ -24,21 +24,29 @@ import com.amazonaws.services.kinesisvideo.AmazonKinesisVideoPutMediaClient;
 import com.amazonaws.services.kinesisvideo.PutMediaAckResponseHandler;
 import com.amazonaws.services.kinesisvideo.model.APIName;
 import com.amazonaws.services.kinesisvideo.model.AckEvent;
+import com.amazonaws.services.kinesisvideo.model.AckEventType;
 import com.amazonaws.services.kinesisvideo.model.FragmentTimecodeType;
 import com.amazonaws.services.kinesisvideo.model.GetDataEndpointRequest;
 import com.amazonaws.services.kinesisvideo.model.PutMediaRequest;
+
+import com.aws.iot.edgeconnectorforkvs.util.Constants;
+import com.aws.iot.edgeconnectorforkvs.util.VideoRecordVisitor;
+import com.aws.iot.edgeconnectorforkvs.videouploader.callback.UploadCallBack;
 import com.aws.iot.edgeconnectorforkvs.videouploader.mkv.MkvFilesInputStream;
 import com.aws.iot.edgeconnectorforkvs.videouploader.mkv.MkvInputStream;
+import com.aws.iot.edgeconnectorforkvs.videouploader.model.VideoFile;
+import com.aws.iot.edgeconnectorforkvs.videouploader.model.exceptions.KvsStreamingException;
 import com.aws.iot.edgeconnectorforkvs.videouploader.model.exceptions.VideoUploaderException;
 
 import lombok.Builder;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 
-import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.util.Date;
+import java.util.List;
 import java.util.ListIterator;
 import java.util.concurrent.CountDownLatch;
 
@@ -84,6 +92,8 @@ public class VideoUploaderClient implements VideoUploader {
     /* A latch to wait or terminate a put media action. */
     private CountDownLatch putMediaLatch;
 
+    private KvsStreamingException lastKvsStreamingException = null;
+
     /**
      * The factory creator of VideoUploaderClient.
      *
@@ -91,7 +101,7 @@ public class VideoUploaderClient implements VideoUploader {
      * @param region                 Region
      * @param recordFilePath         Record path that contain videos
      * @param kvsStreamName          KVS stream name
-     * @return                       Video uploader client
+     * @return Video uploader client
      */
     @Builder
     public static VideoUploaderClient create(@NonNull AWSCredentialsProvider awsCredentialsProvider,
@@ -125,8 +135,8 @@ public class VideoUploaderClient implements VideoUploader {
      */
     @Override
     public void uploadHistoricalVideo(@NonNull Date videoUploadingStartTime, @NonNull Date videoUploadingEndTime,
-                                      Runnable statusChangedCallBack, Runnable uploadCallBack)
-            throws IllegalArgumentException, VideoUploaderException {
+                                      Runnable statusChangedCallBack, UploadCallBack uploadCallBack)
+            throws IllegalArgumentException, VideoUploaderException, KvsStreamingException {
         if (videoUploadingEndTime.before(videoUploadingStartTime)) {
             throw new IllegalArgumentException("Invalid time period");
         }
@@ -140,16 +150,25 @@ public class VideoUploaderClient implements VideoUploader {
     }
 
     private void doUploadHistoricalVideo(Date videoUploadingStartTime, Date videoUploadingEndTime,
-                                         Runnable statusChangedCallBack, Runnable uploadCallBack) {
+                                         Runnable statusChangedCallBack, UploadCallBack uploadCallBack)
+            throws KvsStreamingException {
         if (dataEndpoint == null) {
             dataEndpoint = getDataEndpoint();
         }
 
-        ListIterator<File> filesToUpload = videoRecordVisitor.listFilesToUpload(videoUploadingStartTime,
-                videoUploadingEndTime).listIterator();
+        List<VideoFile> videoFiles = videoRecordVisitor.listFilesToUpload(videoUploadingStartTime,
+                videoUploadingEndTime);
+        if (uploadCallBack != null) {
+            uploadCallBack.setVideoFiles(videoFiles);
+        }
+
+        ListIterator<VideoFile> filesToUpload = videoFiles.listIterator();
 
         while (filesToUpload.hasNext() && !isTaskTerminating) {
-            final Date videoStartTime = videoRecordVisitor.getDateFromFilename(filesToUpload.next().getName());
+            final Date videoStartTime = filesToUpload.next().getVideoDate();
+            if (dataEndpoint == null) {
+                uploadCallBack.setDateBegin(videoStartTime);
+            }
             MkvFilesInputStream mkvFilesInputStream = new MkvFilesInputStream(filesToUpload);
             filesToUpload.previous();
             doUploadStream(mkvFilesInputStream, videoStartTime, statusChangedCallBack, uploadCallBack);
@@ -172,7 +191,8 @@ public class VideoUploaderClient implements VideoUploader {
      */
     @Override
     public void uploadStream(@NonNull InputStream inputStream, @NonNull Date videoUploadingStartTime,
-                             Runnable statusChangedCallBack, Runnable uploadCallBack) {
+                             Runnable statusChangedCallBack, UploadCallBack uploadCallBack)
+            throws KvsStreamingException {
         taskStart();
         doUploadStream(new MkvInputStream(inputStream), videoUploadingStartTime, statusChangedCallBack, uploadCallBack);
         if (uploadCallBack != null) {
@@ -182,7 +202,7 @@ public class VideoUploaderClient implements VideoUploader {
     }
 
     private void doUploadStream(InputStream inputStream, Date videoUploadingStartTime, Runnable statusChangedCallBack,
-                                Runnable uploadCallBack) {
+                                UploadCallBack uploadCallBack) throws KvsStreamingException {
         if (dataEndpoint == null) {
             dataEndpoint = getDataEndpoint();
         }
@@ -215,6 +235,21 @@ public class VideoUploaderClient implements VideoUploader {
         } catch (InterruptedException e) {
             log.debug("Put media is interrupted");
         }
+
+        if (lastKvsStreamingException == null && isTaskTerminating) {
+            /* It's ending from close request, let's wait a little to receive ACKs. */
+            try {
+                inputStream.close();
+                Thread.sleep(Constants.UPLOADER_WAIT_FOR_ACKS_DELAY_MILLI_SECONDS);
+            } catch (IOException exception) {
+                log.error(exception.getMessage());
+            } catch (InterruptedException exception) {
+                log.error(exception.getMessage());
+            }
+        }
+
+        kvsDataClient.close();
+        kvsDataClient = null;
     }
 
     /**
@@ -250,6 +285,7 @@ public class VideoUploaderClient implements VideoUploader {
             } else {
                 isTaskOnGoing = true;
                 isTaskTerminating = false;
+                lastKvsStreamingException = null;
             }
         }
     }
@@ -257,6 +293,13 @@ public class VideoUploaderClient implements VideoUploader {
     private void taskEnd() {
         synchronized (taskStatusLock) {
             isTaskOnGoing = false;
+            if (isTaskTerminating) {
+                /* Task is terminated by request. Ignore exceptions. */
+                lastKvsStreamingException = null;
+            }
+            if (lastKvsStreamingException != null) {
+                throw lastKvsStreamingException;
+            }
         }
     }
 
@@ -280,28 +323,41 @@ public class VideoUploaderClient implements VideoUploader {
      */
     private PutMediaAckResponseHandler createResponseHandler(CountDownLatch latch,
                                                              @SuppressWarnings("unused") Runnable statusChangedCallBack,
-                                                             Runnable uploadCallBack) {
+                                                             UploadCallBack uploadCallBack) {
         return new PutMediaAckResponseHandler() {
             @Override
             public void onAckEvent(AckEvent event) {
-                log.info("onAckEvent " + event);
-                if (uploadCallBack != null) {
-                    uploadCallBack.run();
+                log.trace("onAckEvent " + event);
+                if (AckEventType.Values.PERSISTED.equals(event.getAckEventType().getEnumValue())) {
+                    log.info("Fragment pushed to KVS " + event.getFragmentNumber());
+                    if (uploadCallBack != null) {
+                        updateUploadCallbackStatus(uploadCallBack, event);
+                    }
+                }
+                if (AckEventType.Values.ERROR.equals(event.getAckEventType().getEnumValue())) {
+                    lastKvsStreamingException = new KvsStreamingException(event.toString());
                 }
             }
 
             @Override
             public void onFailure(Throwable t) {
                 log.info("onFailure");
+                lastKvsStreamingException = new KvsStreamingException(t.getMessage());
                 latch.countDown();
-                // TODO: In this case, it should throw some exceptions
             }
 
             @Override
             public void onComplete() {
                 log.info("onComplete");
+                if (uploadCallBack != null) {
+                    uploadCallBack.onComplete();
+                }
                 latch.countDown();
             }
         };
+    }
+
+    private void updateUploadCallbackStatus(UploadCallBack uploadCallBack, AckEvent event) {
+        uploadCallBack.addPersistedFragmentTimecode(event.getFragmentTimecode());
     }
 }

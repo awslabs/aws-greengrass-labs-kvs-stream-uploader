@@ -31,6 +31,7 @@ import com.aws.iot.edgeconnectorforkvs.videouploader.model.exceptions.MkvTracksE
 import com.aws.iot.edgeconnectorforkvs.videouploader.visitors.MergeFragmentVisitor;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -161,6 +162,21 @@ public class MergeFragmentVisitorTest {
                 .build();
     }
 
+    private boolean setPrivateMember(MergeFragmentVisitor instance, String fieldName, Object value) {
+        boolean result = false;
+        try {
+            Field field = MergeFragmentVisitor.class.getDeclaredField(fieldName);
+            field.setAccessible(true);
+            field.set(instance, value);
+            result = true;
+        } catch (NoSuchFieldException exception) {
+            System.out.println("Failed to mock " + fieldName + ", NoSuchFieldException");
+        } catch (IllegalAccessException exception) {
+            System.out.println("Failed to mock " + fieldName + ", IllegalAccessException");
+        }
+        return result;
+    }
+
     @Test
     public void visit_invalidStartElementInStartMasterElement_throwException() {
         // Setup output stream
@@ -201,53 +217,49 @@ public class MergeFragmentVisitorTest {
     }
 
     @Test
-    public void visit_invalidStateInStartMasterElement_throwException()
-            throws NoSuchFieldException, IllegalAccessException {
+    public void visit_invalidStateInStartMasterElement_throwException() {
         // Setup output stream
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
 
         // Ready to test
-        MergeFragmentVisitor mergeFragmentVisitor = MergeFragmentVisitor.create(byteArrayOutputStream);
+        MergeFragmentVisitor visitor = MergeFragmentVisitor.create(byteArrayOutputStream);
 
         // Mock it
-        Field state = MergeFragmentVisitor.class.getDeclaredField("state");
-        state.setAccessible(true);
-        state.set(mergeFragmentVisitor, MergeFragmentVisitor.MergeState.INVALID);
+        Assumptions.assumeTrue(setPrivateMember(visitor, "state", MergeFragmentVisitor.MergeState.INVALID));
 
         // Do test
         Assertions.assertThrows(MkvTracksException.class,
-                () -> mergeFragmentVisitor.visit(trackEntryStartMasterElement));
+                () -> visitor.visit(trackEntryStartMasterElement));
     }
 
     @Test
-    public void visit_invalidStateInDataElement_throwException()
-            throws NoSuchFieldException, IllegalAccessException {
+    public void visit_invalidStateInDataElement_throwException() {
         // Setup output stream
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
 
         // Ready to test
-        MergeFragmentVisitor mergeFragmentVisitor = MergeFragmentVisitor.create(byteArrayOutputStream);
+        MergeFragmentVisitor visitor = MergeFragmentVisitor.create(byteArrayOutputStream);
 
-        Field state = MergeFragmentVisitor.class.getDeclaredField("state");
-        state.setAccessible(true);
-        state.set(mergeFragmentVisitor, MergeFragmentVisitor.MergeState.INVALID);
-        Assertions.assertThrows(MkvTracksException.class, () -> mergeFragmentVisitor.visit(trackNumberDataElement));
+        // Mock it
+        Assumptions.assumeTrue(setPrivateMember(visitor, "state", MergeFragmentVisitor.MergeState.INVALID));
+
+        // Do test
+        Assertions.assertThrows(MkvTracksException.class, () -> visitor.visit(trackNumberDataElement));
     }
 
     @Test
-    public void visit_invalidStateInEndMasterElement_throwException()
-            throws NoSuchFieldException, IllegalAccessException {
+    public void visit_invalidStateInEndMasterElement_throwException() {
         // Setup output stream
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
 
         // Ready to test
-        MergeFragmentVisitor mergeFragmentVisitor = MergeFragmentVisitor.create(byteArrayOutputStream);
+        MergeFragmentVisitor visitor = MergeFragmentVisitor.create(byteArrayOutputStream);
 
-        Field state = MergeFragmentVisitor.class.getDeclaredField("state");
-        state.setAccessible(true);
-        state.set(mergeFragmentVisitor, MergeFragmentVisitor.MergeState.INVALID);
-        Assertions.assertThrows(MkvTracksException.class,
-                () -> mergeFragmentVisitor.visit(trackEntryEndMasterElement));
+        // Mock it
+        Assumptions.assumeTrue(setPrivateMember(visitor, "state", MergeFragmentVisitor.MergeState.INVALID));
+
+        // Do test
+        Assertions.assertThrows(MkvTracksException.class, () -> visitor.visit(trackEntryEndMasterElement));
     }
 
     @Test
@@ -317,7 +329,7 @@ public class MergeFragmentVisitorTest {
     }
 
     @Test
-    public void applyVisitor_oneOneOfOrderedVideo_videoSorted() throws MkvElementVisitException,
+    public void applyVisitor_oneOrderedVideo_videoSorted() throws MkvElementVisitException,
             IOException {
 
         // Create a Video as following
@@ -366,6 +378,31 @@ public class MergeFragmentVisitorTest {
         byteArrayOutputStream.close();
         final byte[] result = byteArrayOutputStream.toByteArray();
         Assertions.assertArrayEquals(result, expectedResult);
+    }
+
+    @Test
+    public void applyVisitor_noTrackInfo_throwException() throws IOException {
+        // Create a Video without track header but has following
+        //      cluster: absolute timecode 0
+        //          simple block: relative timecode 0
+        final ByteArrayOutputStream videoOutOfOrderOutputStream = new ByteArrayOutputStream();
+        videoOutOfOrderOutputStream.write(TestUtil.createNoTracksHeader());
+        videoOutOfOrderOutputStream.write(TestUtil.createClusterHeader(0));
+        videoOutOfOrderOutputStream.write(TestUtil.createSimpleBlock((short) 0, 1));
+        videoOutOfOrderOutputStream.close();
+        final ByteArrayInputStream videoOutOfOrderInputStream =
+                new ByteArrayInputStream(videoOutOfOrderOutputStream.toByteArray());
+
+        // Setup output stream
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+
+        // Ready to test
+        MergeFragmentVisitor mergeFragmentVisitor = MergeFragmentVisitor.create(byteArrayOutputStream);
+
+        // Merge first video
+        final StreamingMkvReader streamingMkvReader;
+        streamingMkvReader = StreamingMkvReader.createDefault(new InputStreamParserByteSource(videoOutOfOrderInputStream));
+        Assertions.assertThrows(MergeFragmentException.class, () -> streamingMkvReader.apply(mergeFragmentVisitor));
     }
 
     @Test
@@ -669,13 +706,12 @@ public class MergeFragmentVisitorTest {
 
     @Test
     public void bufferAndCollectCluster_nestedCluster_throwException()
-            throws NoSuchFieldException, IllegalAccessException, IOException, NoSuchMethodException {
+            throws IllegalAccessException, NoSuchMethodException {
         ByteArrayOutputStream resultOutputStream = new ByteArrayOutputStream();
-        MergeFragmentVisitor mergeFragmentVisitor = MergeFragmentVisitor.create(resultOutputStream);
+        MergeFragmentVisitor visitor = MergeFragmentVisitor.create(resultOutputStream);
 
-        Field field = MergeFragmentVisitor.class.getDeclaredField("currentCluster");
-        field.setAccessible(true);
-        field.set(mergeFragmentVisitor, new MkvCluster(ByteBuffer.wrap(new byte[0])));
+        Assumptions.assumeTrue(setPrivateMember(visitor, "currentCluster",
+                new MkvCluster(ByteBuffer.wrap(new byte[0]))));
 
         Method method = MergeFragmentVisitor.class.getDeclaredMethod("bufferAndCollectCluster",
                 MkvStartMasterElement.class);
@@ -683,7 +719,7 @@ public class MergeFragmentVisitorTest {
 
         boolean isExceptionThrown = false;
         try {
-            method.invoke(mergeFragmentVisitor, clusterStartMasterElement);
+            method.invoke(visitor, clusterStartMasterElement);
         } catch (InvocationTargetException exception) {
             Assertions.assertTrue(exception.getCause() instanceof MkvElementVisitException);
             isExceptionThrown = true;
@@ -693,13 +729,11 @@ public class MergeFragmentVisitorTest {
 
     @Test
     public void bufferAndCollectCluster_nullClusterForDataElement_throwException()
-            throws NoSuchFieldException, IllegalAccessException, IOException, NoSuchMethodException {
+            throws IllegalAccessException, NoSuchMethodException {
         ByteArrayOutputStream resultOutputStream = new ByteArrayOutputStream();
-        MergeFragmentVisitor mergeFragmentVisitor = MergeFragmentVisitor.create(resultOutputStream);
+        MergeFragmentVisitor visitor = MergeFragmentVisitor.create(resultOutputStream);
 
-        Field field = MergeFragmentVisitor.class.getDeclaredField("currentCluster");
-        field.setAccessible(true);
-        field.set(mergeFragmentVisitor, null);
+        Assumptions.assumeTrue(setPrivateMember(visitor, "currentCluster", null));
 
         Method method = MergeFragmentVisitor.class.getDeclaredMethod("bufferAndCollectCluster",
                 MkvDataElement.class);
@@ -707,7 +741,7 @@ public class MergeFragmentVisitorTest {
 
         boolean isExceptionThrown = false;
         try {
-            method.invoke(mergeFragmentVisitor, timecodeDataElement);
+            method.invoke(visitor, timecodeDataElement);
         } catch (InvocationTargetException exception) {
             Assertions.assertTrue(exception.getCause() instanceof MkvElementVisitException);
             isExceptionThrown = true;
@@ -719,24 +753,22 @@ public class MergeFragmentVisitorTest {
     public void bufferAndCollectCluster_noNextFragmentTimecodeOffsetSpecified_timecodeUpdated()
             throws NoSuchFieldException, IllegalAccessException, NoSuchMethodException, InvocationTargetException {
         ByteArrayOutputStream resultOutputStream = new ByteArrayOutputStream();
-        MergeFragmentVisitor mergeFragmentVisitor = MergeFragmentVisitor.create(resultOutputStream);
+        MergeFragmentVisitor visitor = MergeFragmentVisitor.create(resultOutputStream);
 
-        Field fieldPreviousCLuster = MergeFragmentVisitor.class.getDeclaredField("previousCluster");
-        fieldPreviousCLuster.setAccessible(true);
-        fieldPreviousCLuster.set(mergeFragmentVisitor, null);
+        Assumptions.assumeTrue(setPrivateMember(visitor, "previousCluster", null));
 
         MkvCluster currentCluster = new MkvCluster(ByteBuffer.wrap(new byte[0]));
         Field fieldCurrentCluster = MergeFragmentVisitor.class.getDeclaredField("currentCluster");
         fieldCurrentCluster.setAccessible(true);
-        fieldCurrentCluster.set(mergeFragmentVisitor, currentCluster);
+        fieldCurrentCluster.set(visitor, currentCluster);
 
-        mergeFragmentVisitor.setNextFragmentTimecodeOffsetMs(-1);
+        visitor.setNextFragmentTimecodeOffsetMs(-1);
 
         Method method = MergeFragmentVisitor.class.getDeclaredMethod("bufferAndCollectCluster",
                 MkvDataElement.class);
         method.setAccessible(true);
 
-        method.invoke(mergeFragmentVisitor, timecodeDataElement);
+        method.invoke(visitor, timecodeDataElement);
 
         Assertions.assertEquals(0L, currentCluster.getAbsoluteTimecode());
     }
@@ -745,26 +777,22 @@ public class MergeFragmentVisitorTest {
     public void bufferAndCollectCluster_usePreviousClusterToUpdateNextFragmentTimecodeOffset_timecodeUpdated()
             throws NoSuchFieldException, IllegalAccessException, NoSuchMethodException, InvocationTargetException {
         ByteArrayOutputStream resultOutputStream = new ByteArrayOutputStream();
-        MergeFragmentVisitor mergeFragmentVisitor = MergeFragmentVisitor.create(resultOutputStream);
+        MergeFragmentVisitor visitor = MergeFragmentVisitor.create(resultOutputStream);
 
         MkvCluster previousCluster = new MkvCluster(ByteBuffer.wrap(new byte[0]));
         previousCluster.setAbsoluteTimecode(10);
-        Field fieldPreviousCLuster = MergeFragmentVisitor.class.getDeclaredField("previousCluster");
-        fieldPreviousCLuster.setAccessible(true);
-        fieldPreviousCLuster.set(mergeFragmentVisitor, previousCluster);
+        Assumptions.assumeTrue(setPrivateMember(visitor, "previousCluster", previousCluster));
 
         MkvCluster currentCluster = new MkvCluster(ByteBuffer.wrap(new byte[0]));
-        Field fieldCurrentCluster = MergeFragmentVisitor.class.getDeclaredField("currentCluster");
-        fieldCurrentCluster.setAccessible(true);
-        fieldCurrentCluster.set(mergeFragmentVisitor, currentCluster);
+        Assumptions.assumeTrue(setPrivateMember(visitor, "currentCluster", currentCluster));
 
-        mergeFragmentVisitor.setNextFragmentTimecodeOffsetMs(-1);
+        visitor.setNextFragmentTimecodeOffsetMs(-1);
 
         Method method = MergeFragmentVisitor.class.getDeclaredMethod("bufferAndCollectCluster",
                 MkvDataElement.class);
         method.setAccessible(true);
 
-        method.invoke(mergeFragmentVisitor, timecodeDataElement);
+        method.invoke(visitor, timecodeDataElement);
 
         Assertions.assertEquals(11L, currentCluster.getAbsoluteTimecode());
     }
@@ -773,11 +801,9 @@ public class MergeFragmentVisitorTest {
     public void bufferAndCollectSegment_segmentVerifiedAndTryToBufferStartMasterElement_throwException()
             throws NoSuchFieldException, IllegalAccessException, NoSuchMethodException {
         ByteArrayOutputStream resultOutputStream = new ByteArrayOutputStream();
-        MergeFragmentVisitor mergeFragmentVisitor = MergeFragmentVisitor.create(resultOutputStream);
+        MergeFragmentVisitor visitor = MergeFragmentVisitor.create(resultOutputStream);
 
-        Field field = MergeFragmentVisitor.class.getDeclaredField("isSegmentVerified");
-        field.setAccessible(true);
-        field.set(mergeFragmentVisitor, true);
+        Assumptions.assumeTrue(setPrivateMember(visitor, "isSegmentVerified", true));
 
         Method method = MergeFragmentVisitor.class.getDeclaredMethod("bufferAndCollectSegment",
                 MkvStartMasterElement.class);
@@ -785,23 +811,21 @@ public class MergeFragmentVisitorTest {
 
         boolean isExceptionThrown = false;
         try {
-            method.invoke(mergeFragmentVisitor, clusterStartMasterElement);
+            method.invoke(visitor, clusterStartMasterElement);
         } catch (InvocationTargetException exception) {
             Assertions.assertTrue(exception.getCause() instanceof MkvElementVisitException);
             isExceptionThrown = true;
         }
-        Assertions.assertTrue(isExceptionThrown);
+        Assertions.assertFalse(isExceptionThrown);
     }
 
     @Test
     public void bufferAndCollectSegment_segmentVerifiedAndTryToBufferDataElement_throwException()
             throws NoSuchFieldException, IllegalAccessException, NoSuchMethodException {
         ByteArrayOutputStream resultOutputStream = new ByteArrayOutputStream();
-        MergeFragmentVisitor mergeFragmentVisitor = MergeFragmentVisitor.create(resultOutputStream);
+        MergeFragmentVisitor visitor = MergeFragmentVisitor.create(resultOutputStream);
 
-        Field field = MergeFragmentVisitor.class.getDeclaredField("isSegmentVerified");
-        field.setAccessible(true);
-        field.set(mergeFragmentVisitor, true);
+        Assumptions.assumeTrue(setPrivateMember(visitor, "isSegmentVerified", true));
 
         Method method = MergeFragmentVisitor.class.getDeclaredMethod("bufferAndCollectSegment",
                 MkvDataElement.class);
@@ -809,19 +833,19 @@ public class MergeFragmentVisitorTest {
 
         boolean isExceptionThrown = false;
         try {
-            method.invoke(mergeFragmentVisitor, timecodeDataElement);
+            method.invoke(visitor, timecodeDataElement);
         } catch (InvocationTargetException exception) {
             Assertions.assertTrue(exception.getCause() instanceof MkvElementVisitException);
             isExceptionThrown = true;
         }
-        Assertions.assertTrue(isExceptionThrown);
+        Assertions.assertFalse(isExceptionThrown);
     }
 
     @Test
     public void sortClusters_validClusters_clusterSorted()
             throws NoSuchFieldException, IllegalAccessException, NoSuchMethodException, InvocationTargetException {
         ByteArrayOutputStream resultOutputStream = new ByteArrayOutputStream();
-        MergeFragmentVisitor mergeFragmentVisitor = MergeFragmentVisitor.create(resultOutputStream);
+        MergeFragmentVisitor visitor = MergeFragmentVisitor.create(resultOutputStream);
 
         MkvCluster previousCluster = new MkvCluster(ByteBuffer.wrap(new byte[0]));
         previousCluster.setAbsoluteTimecode(0);
@@ -831,20 +855,16 @@ public class MergeFragmentVisitorTest {
                 ByteBuffer.wrap(new byte[]{(byte) 0xA3, (byte) 0x85}),
                 ByteBuffer.wrap(new byte[]{(byte) 0x80, (byte) 0x00, (byte) 0x00, (byte) 0x80, (byte) 0x00})
         ));
-        Field fieldPreviousCLuster = MergeFragmentVisitor.class.getDeclaredField("previousCluster");
-        fieldPreviousCLuster.setAccessible(true);
-        fieldPreviousCLuster.set(mergeFragmentVisitor, previousCluster);
+        Assumptions.assumeTrue(setPrivateMember(visitor, "previousCluster", previousCluster));
 
         MkvCluster currentCluster = new MkvCluster(ByteBuffer.wrap(new byte[0]));
         currentCluster.setAbsoluteTimecode(10);
-        Field fieldCurrentCluster = MergeFragmentVisitor.class.getDeclaredField("currentCluster");
-        fieldCurrentCluster.setAccessible(true);
-        fieldCurrentCluster.set(mergeFragmentVisitor, currentCluster);
+        Assumptions.assumeTrue(setPrivateMember(visitor, "currentCluster", currentCluster));
 
         Method method = MergeFragmentVisitor.class.getDeclaredMethod("sortClusters");
         method.setAccessible(true);
 
-        method.invoke(mergeFragmentVisitor);
+        method.invoke(visitor);
 
         Assertions.assertEquals(0, previousCluster.getLatestSimpleBlockTimecode());
         Assertions.assertEquals(20, currentCluster.getEarliestSimpleBlockTimecode());
@@ -854,7 +874,7 @@ public class MergeFragmentVisitorTest {
     public void sortClusters_noCurrentClusters_clusterSorted()
             throws NoSuchFieldException, IllegalAccessException, NoSuchMethodException, InvocationTargetException {
         ByteArrayOutputStream resultOutputStream = new ByteArrayOutputStream();
-        MergeFragmentVisitor mergeFragmentVisitor = MergeFragmentVisitor.create(resultOutputStream);
+        MergeFragmentVisitor visitor = MergeFragmentVisitor.create(resultOutputStream);
 
         MkvCluster previousCluster = new MkvCluster(ByteBuffer.wrap(new byte[0]));
         previousCluster.setAbsoluteTimecode(0);
@@ -870,18 +890,13 @@ public class MergeFragmentVisitorTest {
                 ByteBuffer.wrap(new byte[]{(byte) 0xA3, (byte) 0x85}),
                 ByteBuffer.wrap(new byte[]{(byte) 0x80, (byte) 0x00, (byte) 0x00, (byte) 0x80, (byte) 0x00})
         ));
-        Field fieldPreviousCLuster = MergeFragmentVisitor.class.getDeclaredField("previousCluster");
-        fieldPreviousCLuster.setAccessible(true);
-        fieldPreviousCLuster.set(mergeFragmentVisitor, previousCluster);
-
-        Field fieldCurrentCluster = MergeFragmentVisitor.class.getDeclaredField("currentCluster");
-        fieldCurrentCluster.setAccessible(true);
-        fieldCurrentCluster.set(mergeFragmentVisitor, null);
+        Assumptions.assumeTrue(setPrivateMember(visitor, "previousCluster", previousCluster));
+        Assumptions.assumeTrue(setPrivateMember(visitor, "currentCluster", null));
 
         Method method = MergeFragmentVisitor.class.getDeclaredMethod("sortClusters");
         method.setAccessible(true);
 
-        method.invoke(mergeFragmentVisitor);
+        method.invoke(visitor);
 
         Assertions.assertEquals(10, previousCluster.getEarliestSimpleBlockTimecode());
         Assertions.assertEquals(20, previousCluster.getLatestSimpleBlockTimecode());

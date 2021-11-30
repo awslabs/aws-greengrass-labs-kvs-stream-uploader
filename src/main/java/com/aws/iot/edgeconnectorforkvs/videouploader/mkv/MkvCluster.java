@@ -20,6 +20,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.channels.WritableByteChannel;
 import java.util.ArrayList;
@@ -52,7 +53,11 @@ public class MkvCluster {
     public MkvCluster(ByteBuffer idAndSizeRawBytes) {
         idAndSizeRawBytes.rewind();
         idAndSizeBytes = new byte[idAndSizeRawBytes.remaining()];
-        idAndSizeRawBytes.get(idAndSizeBytes);
+        try {
+            idAndSizeRawBytes.get(idAndSizeBytes);
+        } catch (BufferUnderflowException ex) {
+            log.error("Buffer Underflow Exception: " + ex.getMessage());
+        }
 
         isSimpleBlocksSorted = false;
     }
@@ -191,12 +196,16 @@ public class MkvCluster {
 
     private void writeTimecodeToChannel(WritableByteChannel outputChannel) throws IOException {
         ByteBuffer buffer = ByteBuffer.allocate(10);
-        buffer.put(0, (byte) MkvTypeInfos.TIMECODE.getId());
-        buffer.put(1, (byte) 0x88);
-        buffer.putLong(2, absoluteTimecode);
-        buffer.rewind();
+        try {
+            buffer.put(0, (byte) MkvTypeInfos.TIMECODE.getId());
+            buffer.put(1, (byte) 0x88);
+            buffer.putLong(2, absoluteTimecode);
+            buffer.rewind();
 
-        outputChannel.write(buffer);
+            outputChannel.write(buffer);
+        } catch (IndexOutOfBoundsException ex) {
+            log.error("Index Out of Bounds Exception: " + ex.getMessage());
+        }
     }
 
     @Override

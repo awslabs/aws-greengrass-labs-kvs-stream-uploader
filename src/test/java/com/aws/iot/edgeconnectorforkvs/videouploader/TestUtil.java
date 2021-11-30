@@ -73,6 +73,10 @@ public class TestUtil {
             (byte) 0xA3, (byte) 0x85, (byte) 0x80, (byte) 0x00, (byte) 0x00, (byte) 0x80, (byte) 0x00
     };
 
+    private static final byte[] SEGMENT_HEADER_ONLY = new byte[]{
+            (byte) 0x18, (byte) 0x53, (byte) 0x80, (byte) 0x67, (byte) 0xFF
+    };
+
     private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
 
     /**
@@ -144,6 +148,14 @@ public class TestUtil {
         simpleBlock.rewind();
 
         return simpleBlock.array();
+    }
+
+    public static byte[] createNoTracksHeader() throws IOException {
+        final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        byteArrayOutputStream.write(EBML_HEADER);
+        byteArrayOutputStream.write(SEGMENT_HEADER_ONLY);
+        byteArrayOutputStream.close();
+        return byteArrayOutputStream.toByteArray();
     }
 
     public static String bytesToHex(byte[] bytes) {

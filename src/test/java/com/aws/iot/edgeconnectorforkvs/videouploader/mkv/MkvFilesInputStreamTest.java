@@ -19,6 +19,7 @@ import com.amazonaws.kinesisvideo.parser.mkv.MkvElementVisitException;
 import com.amazonaws.kinesisvideo.parser.mkv.MkvStartMasterElement;
 import com.amazonaws.kinesisvideo.parser.mkv.StreamingMkvReader;
 import com.aws.iot.edgeconnectorforkvs.videouploader.TestUtil;
+import com.aws.iot.edgeconnectorforkvs.videouploader.model.VideoFile;
 import com.aws.iot.edgeconnectorforkvs.videouploader.visitors.MergeFragmentVisitor;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Assumptions;
@@ -30,7 +31,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.FileVisitResult;
@@ -118,8 +118,8 @@ public class MkvFilesInputStreamTest {
     @Test
     public void available_unavailableFile_returnNegativeByteCount() {
         // Create input
-        final List<File> filesToMerge = new ArrayList<>();
-        filesToMerge.add(new File("unavailableFile"));
+        final List<VideoFile> filesToMerge = new ArrayList<>();
+        filesToMerge.add(new VideoFile("unavailableFile"));
 
         // Do test
         mkvInputStream = new MkvFilesInputStream(filesToMerge.listIterator());
@@ -133,8 +133,8 @@ public class MkvFilesInputStreamTest {
         Assumptions.assumeTrue(isVideoFilesAvailable);
 
         // Create input
-        final List<File> filesToMerge = new ArrayList<>();
-        filesToMerge.add(tempVideoWithZeroSizePath.toFile());
+        final List<VideoFile> filesToMerge = new ArrayList<>();
+        filesToMerge.add(new VideoFile(tempVideoWithZeroSizePath.toFile()));
 
         // Do test
         mkvInputStream = new MkvFilesInputStream(filesToMerge.listIterator());
@@ -148,9 +148,9 @@ public class MkvFilesInputStreamTest {
         Assumptions.assumeTrue(isVideoFilesAvailable);
 
         // Create input
-        final List<File> filesToMerge = new ArrayList<>();
-        filesToMerge.add(tempVideoPath1.toFile());
-        filesToMerge.add(tempVideoPath2.toFile());
+        final List<VideoFile> filesToMerge = new ArrayList<>();
+        filesToMerge.add(new VideoFile(tempVideoPath1.toFile()));
+        filesToMerge.add(new VideoFile(tempVideoPath2.toFile()));
 
         // Do test
         mkvInputStream = new MkvFilesInputStream(filesToMerge.listIterator());
@@ -165,9 +165,9 @@ public class MkvFilesInputStreamTest {
         Assumptions.assumeTrue(isVideoFilesAvailable);
 
         // Setup test
-        final List<File> filesToMerge = new ArrayList<>();
-        filesToMerge.add(tempVideoPath1.toFile());
-        filesToMerge.add(tempVideoPath2.toFile());
+        final List<VideoFile> filesToMerge = new ArrayList<>();
+        filesToMerge.add(new VideoFile(tempVideoPath1.toFile()));
+        filesToMerge.add(new VideoFile(tempVideoPath2.toFile()));
         mkvInputStream = new MkvFilesInputStream(filesToMerge.listIterator());
 
         // Mock it
@@ -187,7 +187,7 @@ public class MkvFilesInputStreamTest {
         Assumptions.assumeTrue(isVideoFilesAvailable);
 
         // Setup test
-        final List<File> filesToMerge = new ArrayList<>();
+        final List<VideoFile> filesToMerge = new ArrayList<>();
         mkvInputStream = new MkvFilesInputStream(filesToMerge.listIterator());
 
         // Mock it
@@ -213,9 +213,9 @@ public class MkvFilesInputStreamTest {
         Assumptions.assumeTrue(isVideoFilesAvailable);
 
         // Setup test
-        final List<File> filesToMerge = new ArrayList<>();
-        filesToMerge.add(tempVideoPath1.toFile());
-        filesToMerge.add(tempVideoPath2.toFile());
+        final List<VideoFile> filesToMerge = new ArrayList<>();
+        filesToMerge.add(new VideoFile(tempVideoPath1.toFile()));
+        filesToMerge.add(new VideoFile(tempVideoPath2.toFile()));
         mkvInputStream = new MkvFilesInputStream(filesToMerge.listIterator());
 
         // Mock it
@@ -235,7 +235,7 @@ public class MkvFilesInputStreamTest {
         Assumptions.assumeTrue(isVideoFilesAvailable);
 
         // Setup test
-        final List<File> filesToMerge = new ArrayList<>();
+        final List<VideoFile> filesToMerge = new ArrayList<>();
         mkvInputStream = new MkvFilesInputStream(filesToMerge.listIterator());
 
         // Mock it
@@ -257,9 +257,9 @@ public class MkvFilesInputStreamTest {
         int readLen;
 
         // Create input
-        final List<File> filesToMerge = new ArrayList<>();
-        filesToMerge.add(tempVideoPath1.toFile());
-        filesToMerge.add(tempVideoPath2.toFile());
+        final List<VideoFile> filesToMerge = new ArrayList<>();
+        filesToMerge.add(new VideoFile(tempVideoPath1.toFile()));
+        filesToMerge.add(new VideoFile(tempVideoPath2.toFile()));
 
         // Create answer
         byte[] answer = createMergedVideo();
@@ -285,9 +285,9 @@ public class MkvFilesInputStreamTest {
         int readLen;
 
         // Create input
-        final List<File> filesToMerge = new ArrayList<>();
-        filesToMerge.add(tempVideoPath1.toFile());
-        filesToMerge.add(tempVideoAudioPath.toFile());
+        final List<VideoFile> filesToMerge = new ArrayList<>();
+        filesToMerge.add(new VideoFile(tempVideoPath1.toFile()));
+        filesToMerge.add(new VideoFile(tempVideoAudioPath.toFile()));
 
         // Create answer
         byte[] answer = TestUtil.createSampleVideo(false);
@@ -312,9 +312,9 @@ public class MkvFilesInputStreamTest {
         int b;
 
         // Create input
-        final List<File> filesToMerge = new ArrayList<>();
-        filesToMerge.add(tempVideoPath1.toFile());
-        filesToMerge.add(tempVideoPath2.toFile());
+        final List<VideoFile> filesToMerge = new ArrayList<>();
+        filesToMerge.add(new VideoFile(tempVideoPath1.toFile()));
+        filesToMerge.add(new VideoFile(tempVideoPath2.toFile()));
 
         // Create answer
         byte[] answer = createMergedVideo();
@@ -336,9 +336,9 @@ public class MkvFilesInputStreamTest {
         Assumptions.assumeTrue(isVideoFilesAvailable);
 
         // Create input
-        final List<File> filesToMerge = new ArrayList<>();
-        filesToMerge.add(tempVideoPath1.toFile());
-        filesToMerge.add(tempVideoPath2.toFile());
+        final List<VideoFile> filesToMerge = new ArrayList<>();
+        filesToMerge.add(new VideoFile(tempVideoPath1.toFile()));
+        filesToMerge.add(new VideoFile(tempVideoPath2.toFile()));
 
         // Do test
         mkvInputStream = new MkvFilesInputStream(filesToMerge.listIterator());

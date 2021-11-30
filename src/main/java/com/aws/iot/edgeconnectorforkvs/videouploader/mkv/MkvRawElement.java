@@ -5,6 +5,7 @@ import lombok.NonNull;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
@@ -12,7 +13,6 @@ import java.util.Arrays;
  * The super class of {@link MkvParentRawElement} and {@link MkvDataRawElement}.
  */
 @Slf4j
-
 public abstract class MkvRawElement {
 
     private final byte[] id;
@@ -55,7 +55,11 @@ public abstract class MkvRawElement {
     public MkvRawElement(@NonNull ByteBuffer idAndSizeByteBuffer) {
         idAndSizeByteBuffer.rewind();
         final byte[] idAndSize = new byte[idAndSizeByteBuffer.remaining()];
-        idAndSizeByteBuffer.get(idAndSize);
+        try {
+            idAndSizeByteBuffer.get(idAndSize);
+        } catch (BufferUnderflowException ex) {
+            log.error("Buffer Underflow Exception: " + ex.getMessage());
+        }
 
         id = getMkvId(idAndSize);
     }

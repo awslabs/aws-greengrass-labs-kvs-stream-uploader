@@ -1,15 +1,19 @@
 package com.aws.iot.edgeconnectorforkvs.videouploader.mkv;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.builder.EqualsBuilder;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 
+import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
+import java.nio.ReadOnlyBufferException;
 import java.util.ArrayList;
 
 /**
  * It's a subclass of {@link MkvRawElement}. It represents a parent MKV element. Its data field is consisted of other
  * {@link MkvParentRawElement} and {@link MkvDataRawElement}.
  */
+@Slf4j
 public class MkvParentRawElement extends MkvRawElement {
 
     private final ArrayList<MkvRawElement> children = new ArrayList<>();
@@ -71,10 +75,16 @@ public class MkvParentRawElement extends MkvRawElement {
         final byte[] size = getMkvSize(dataLen);
         final byte[] raw = new byte[(int) (this.getIdCopy().length + size.length + dataLen)];
         final ByteBuffer buffer = ByteBuffer.wrap(raw);
-        buffer.put(this.getIdCopy());
-        buffer.put(size);
-        for (byte[] childRaw : childrenRaws) {
-            buffer.put(childRaw);
+        try {
+            buffer.put(this.getIdCopy());
+            buffer.put(size);
+            for (byte[] childRaw : childrenRaws) {
+                buffer.put(childRaw);
+            }
+        } catch (BufferOverflowException ex) {
+            log.error("Buffer Overflow Exception: " + ex.getMessage());
+        } catch (ReadOnlyBufferException ex) {
+            log.error("Readonly Buffer Exception: " + ex.getMessage());
         }
         return buffer.array();
     }

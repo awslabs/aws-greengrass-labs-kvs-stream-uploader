@@ -13,9 +13,8 @@
  * permissions and limitations under the License.
  */
 
-package com.aws.iot.edgeconnectorforkvs.videouploader;
+package com.aws.iot.edgeconnectorforkvs.util;
 
-import com.aws.iot.edgeconnectorforkvs.util.VideoRecordVisitor;
 import com.aws.iot.edgeconnectorforkvs.videouploader.model.VideoFile;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -187,6 +186,14 @@ public class VideoRecordVisitorTest {
     @Test
     public void getDateFromFilename_invalidInputs_timestampZero() {
         String invalidVideoFilename = "invalidVideoFilename.mkv";
+        Date videoDate = videoRecordVisitor.getDateFromFilename(invalidVideoFilename);
+        Assertions.assertEquals(new Date(0L), videoDate);
+    }
+
+    @Test
+    public void getDateFromFilename_NumberFormatException() {
+        //Over length date format
+        String invalidVideoFilename = "video_13131312313131313131313131313131313131313131312313213131311313.mkv";
         Date videoDate = videoRecordVisitor.getDateFromFilename(invalidVideoFilename);
         Assertions.assertEquals(new Date(0L), videoDate);
     }

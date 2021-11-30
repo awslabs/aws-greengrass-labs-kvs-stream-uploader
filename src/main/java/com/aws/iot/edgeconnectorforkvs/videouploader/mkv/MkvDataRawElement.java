@@ -5,7 +5,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.builder.EqualsBuilder;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 
+import java.nio.BufferOverflowException;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
+import java.nio.ReadOnlyBufferException;
 import java.util.Arrays;
 
 /**
@@ -28,7 +31,11 @@ public class MkvDataRawElement extends MkvRawElement {
 
         dataByteBuffer.rewind();
         data = new byte[dataByteBuffer.remaining()];
-        dataByteBuffer.get(data);
+        try {
+            dataByteBuffer.get(data);
+        } catch (BufferUnderflowException ex) {
+            log.error("Buffer Underflow Exception: " + ex.getMessage());
+        }
 
         // MKV CodecID element's header is 0x86, so we check its length and its value here.
         if (this.getIdCopy().length == 1 && this.getIdCopy()[0] == (byte) 0x86) {
@@ -64,9 +71,15 @@ public class MkvDataRawElement extends MkvRawElement {
         final byte[] size = getMkvSize(this.getDataLen());
         final byte[] raw = new byte[this.getIdCopy().length + size.length + data.length];
         final ByteBuffer buffer = ByteBuffer.wrap(raw);
-        buffer.put(this.getIdCopy());
-        buffer.put(size);
-        buffer.put(data);
+        try {
+            buffer.put(this.getIdCopy());
+            buffer.put(size);
+            buffer.put(data);
+        } catch (BufferOverflowException ex) {
+            log.error("Buffer Overflow Exception: " + ex.getMessage());
+        } catch (ReadOnlyBufferException ex) {
+            log.error("Readonly Buffer Exception: " + ex.getMessage());
+        }
         return buffer.array();
     }
 
